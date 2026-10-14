@@ -31,6 +31,17 @@ Construí uma mesa de exceções local (Python + FastAPI). Ela recalcula a fila 
 **Caso a caso (os outros 53%)**: roteiro padrão por tipo, com a ação sugerida em cada linha da fila.
 Pagamento pendente e endereço divergente podem ser automatizados (link Pix/lembrete e confirmação por WhatsApp) e saem da fila do time.
 
+**Agente de IA (ação útil, não chat).**
+- Para cada pedido da fila, ou para os N primeiros em lote, o agente consulta com ferramentas o que a análise já calculou:
+  pedido, cliente, SLA da transportadora na UF, causa sistêmica e custo de cada alternativa.
+- Ele devolve:
+  - um diagnóstico com números;
+  - uma ação de uma lista fechada (reenviar, reembolsar, chamado na transportadora, refazer personalização, contatar, aguardar, escalar);
+  - os rascunhos das mensagens ao cliente e à transportadora ou à área dona da causa.
+- Reenvio, reembolso e reprodução ficam **pendentes de aprovação humana**. Tudo é simulado.
+- Em geral são 2 chamadas ao modelo por pedido (cerca de 20 s), com limites de passos, tokens, tempo e uso por IP.
+  Sem chave de IA, o resto do app funciona igual.
+
 **Limites.** Não temos o volume total de pedidos, então as concentrações usam as outras exceções como base de volume.
 Os valores em R$ dependem de premissas declaradas e editáveis (horizonte de 5 DU, contatos durante a espera, recompra).
 O valor recuperado compara duas ordens de atendimento num mesmo modelo; não é uma medição. Cada causa é uma hipótese forte a validar na operação.

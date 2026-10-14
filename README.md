@@ -1,6 +1,6 @@
 # Mesa de exceções: Problema 2 (Operações)
 
-Aplicação local que **prioriza, investiga e ajuda a resolver** os pedidos com exceção da Gocase e da GoBeauté.
+Aplicação web que **prioriza, investiga e ajuda a resolver** os pedidos com exceção da Gocase e da GoBeauté.
 Ela responde às quatro perguntas do desafio com números em R$ e recalcula tudo quando chegam CSVs novos
 (no mesmo formato) ou quando um parâmetro muda: capacidade, custos, feriados, tabela de cancelamento etc.
 
@@ -16,13 +16,19 @@ python -m venv .venv
 .venv\Scripts\python app.py
 # abra http://127.0.0.1:8765   (outra porta: set PORT=9000)
 
-# testes
+# testes (a IA é simulada: nenhum teste chama a rede)
 .venv\Scripts\python -m pytest -q
+
+# 3) opcional: ligar o agente de IA. Crie um .env na raiz (já está no .gitignore e no .vercelignore):
+#   AI_API_KEY=...
+#   AI_BASE_URL=https://ai-proxy.gogroupbr.com/v1
+#   AI_MODEL=latest
 ```
 
 Python 3.11, pandas, FastAPI e uvicorn. Os gráficos usam Chart.js e as fontes vêm do Google Fonts, ambos por CDN.
 Sem internet a página continua funcionando: os números aparecem nas tabelas e no lugar dos gráficos surge um aviso.
-Nada sai do computador: não há chamadas a APIs externas e não há recurso de IA ligado.
+A análise não chama serviços externos. Só o **agente de IA** (opcional) envia dados para fora: os números de um pedido por vez,
+sem identificar o cliente. Sem `AI_API_KEY` o agente aparece como "desligado" e todo o resto funciona igual.
 
 ## Publicar na Vercel
 
@@ -30,6 +36,9 @@ O `app.py` expõe o objeto `app` (FastAPI) na raiz, que a Vercel reconhece sozin
 repositório do GitHub e clique em **Deploy** (Framework Preset: FastAPI, ou deixe *Other*; sem comandos extras).
 O app não depende de memória entre requisições: quem chega numa instância nova carrega os dados originais, o upload vai inteiro
 na própria requisição, trocar parâmetros depois de um upload reenvia os arquivos e o CSV da fila é gerado no navegador.
+O agente segue a mesma regra: cada execução leva o pedido, os parâmetros atuais e, se houve upload, os mesmos arquivos.
+O `vercel.json` só define `maxDuration: 60` para a função `app.py` (na Vercel o app inteiro é uma função; o limite vale para todas as
+rotas, mas só a do agente chega perto dele). Para ligar o agente, veja [Configurar na Vercel](#configurar-na-vercel).
 
 ## O que tem na interface
 
@@ -40,17 +49,21 @@ na própria requisição, trocar parâmetros depois de um upload reenvia os arqu
 | **Causas** | Causas sistêmicas (dono, ação, evidências, ganho estimado), falhas de sistema e roteiro caso a caso por tipo. Traz também as transportadoras medidas pelo prazo correto e pelo prazo do sistema. |
 | **Parâmetros e dados** | Todos os parâmetros do `parametros.md`, mais as premissas próprias (marcadas), editáveis. Upload de `pedidos_excecao.csv` + `clientes.csv`, com `transportadoras.csv` opcional. |
 | **Qualidade dos dados** | As 16 verificações que rodam a cada carga: o que foi encontrado, o que foi feito e o motivo. Inclui as concentrações brutas, para auditoria. |
+| **Agente de IA** | Roda o agente num pedido (ID ou botão "Rodar agente" em cada linha da fila) ou nos N primeiros da fila (padrão 5, máx. 8). Mostra diagnóstico, ação, custo, rascunhos e as consultas feitas; ações com dinheiro têm "Aprovar"/"Recusar". |
 
 API: `GET /api/analise`, `GET /api/backlog`, `POST /api/parametros` (JSON, aceita atualização parcial),
-`POST /api/upload` (multipart: `pedidos`, `clientes`, `transportadoras` opcional, `params` opcional), `POST /api/reset`, `GET /api/fila.csv`.
+`POST /api/upload` (multipart: `pedidos`, `clientes`, `transportadoras` opcional, `params` opcional), `POST /api/reset`, `GET /api/fila.csv`,
+`GET /api/agente/status`, `POST /api/agente` (multipart: `order_id`, `params` opcional e, se houve upload, os mesmos arquivos).
 
 ## Estrutura
 
 ```
 analise.py            motor de análise (funções puras, testáveis)
-app.py                servidor FastAPI + estado em memória
+agente.py             agente de IA: prompt, ferramentas, loop de tool calling, limites, chamada ao gateway
+app.py                servidor FastAPI + estado em memória + rotas do agente
 static/index.html     interface (HTML/CSS/JS puro + Chart.js)
-tests/                pytest: dias úteis/prazo, deduplicação, priorização, detecção de causas, API
+tests/                pytest: dias úteis/prazo, deduplicação, priorização, detecção de causas, API, agente (IA simulada)
+vercel.json           maxDuration de 60 s para a função app.py
 scripts/gerar_dado_novo.py   gera um subconjunto com datas deslocadas para testar "dado novo"
 dados/                CSVs e parâmetros do desafio
 ```
@@ -86,6 +99,97 @@ dados/                CSVs e parâmetros do desafio
      removidos e cada pedido entra em no máximo uma causa, para não contar em dobro.
    - Ganho mensal = excesso × custo médio de uma exceção (custo direto + perda esperada na fila priorizada + 1 contato),
      projetado para 30 dias.
+
+## Agente de IA
+
+### O que faz e por que essa ação
+
+O **agente da fila de exceções** pega um pedido da fila priorizada, investiga o caso e deixa a tratativa pronta para uma pessoa revisar:
+
+1. **Diagnóstico** em 2 ou 3 frases, com os números do caso: DU de atraso pelo prazo correto, risco de cancelar hoje e se esperar,
+   custo de esperar e causa sistêmica.
+2. **Ação recomendada**, de uma lista fechada: `reenviar`, `reembolsar`, `abrir_chamado_transportadora`, `refazer_personalizacao`,
+   `contatar_cliente`, `aguardar` e `escalar`. O custo da ação é calculado pelo app, com os parâmetros, e não pelo modelo.
+3. **Rascunho da mensagem ao cliente** e, quando faz sentido, **rascunho para a transportadora ou para a área dona da causa**.
+   O rascunho cita a causa (ex.: C1, C5), para que a correção de processo seja acompanhada.
+
+Por que essa ação: a fila já diz *quem* tratar hoje (150 pedidos/dia), mas cada tratativa ainda custa cerca de 12 minutos.
+Nesse tempo, a pessoa abre o pedido, cruza com o cliente e a transportadora, decide entre reenviar e reembolsar e escreve
+duas mensagens. O agente faz esse trabalho com as mesmas contas do app e entrega o caso pronto para revisar.
+A decisão continua com a pessoa.
+
+**Modo em lote:** "Processar os N primeiros da fila" (padrão 5, máx. 8) roda o agente em sequência e junta as recomendações e
+os rascunhos para revisão. O navegador faz uma requisição por pedido, para cada uma caber no limite de tempo da Vercel.
+
+### Ferramentas (todas chamam o que o motor de análise já calculou)
+
+| Ferramenta | O que devolve | De onde vem |
+| --- | --- | --- |
+| `buscar_pedido` | tipo, status, datas, prazo correto × sistema, atraso em DU, risco hoje → se esperar, custo de esperar, posição na fila, motivo e ação do roteiro padrão | `enriquecer`, `fila_hoje`, `_motivo`, `_acao` |
+| `historico_cliente` | nº de pedidos, receita acumulada, ticket médio, contatos, alto valor, chance de recompra (e se mal resolvida), recompra em risco, outras exceções abertas | `limpar` + `enriquecer` |
+| `sla_transportadora` | SLA contratado e frete para a UF, desempenho pelo prazo correto (geral e na UF), alternativas na UF | `transportadoras.csv` limpo + `enriquecer` |
+| `causa_sistemica` | se o pedido está numa causa detectada (dono, ação, evidências, lift, ganho/mês), se é "atraso falso" (P1) e quantas exceções do mesmo tipo há nos segmentos dele (transportadora × UF, CD × turno, lote × SKU, máquina) | `causas_sistemicas` |
+| `custos_alternativas` | custo em R$ de cada ação: reenvio (CMV + frete; item faltante só o item), reembolso, reprodução, contato e o custo de aguardar | `parametros.md` + `custo_de_esperar` |
+| `registrar_recomendacao` | a ação final: valida a lista fechada e marca **pendente de aprovação humana** quando há dinheiro | `agente.py` |
+
+O loop: no 1º passo, o modelo chama as cinco ferramentas de investigação de uma vez; no 2º, registra a recomendação.
+Na prática são 2 chamadas ao modelo por pedido, cerca de 4,5 mil tokens e de 15 a 25 s.
+
+### Limites e segurança
+
+- **Ações com dinheiro não são executadas.**
+  - `reenviar`, `reembolsar` e `refazer_personalizacao` (que custa o mesmo que um reenvio) saem como **pendente de aprovação humana**.
+  - Na interface, uma pessoa aprova ou recusa.
+  - Tudo é simulado: nada é enviado e nenhum dinheiro é movimentado. O registro de decisões fica só no navegador (`localStorage`).
+- **Lista fechada:** quem recusa uma ação fora da lista é o app, não só o `enum` do esquema. A recusa volta ao modelo como erro.
+  Se ele insistir até o fim, o caso sai "sem recomendação".
+- **Dados são dados:**
+  - Os textos dos CSVs (produto, campos livres) chegam ao modelo como JSON de resultado de ferramenta.
+  - Esses textos são limpos de caracteres de controle e cortados em 120 caracteres.
+  - O prompt de sistema manda ignorar qualquer instrução que apareça neles.
+  - As ferramentas só consultam o pedido em análise.
+  - O ID digitado é validado (`[A-Za-z0-9_-]{1,32}`) e a saída é escapada na página.
+- **Minimização de dados:** não vão ao modelo o `customer_id` nem a cidade (a UF basta). Os dados não têm nome, e-mail ou telefone.
+  A mensagem começa com "Olá, [nome]!", para quem envia completar.
+- **Limites:**
+  - no máximo 6 passos; no último, só a ferramenta final fica disponível, com `tool_choice: required`;
+  - 1.200 `max_tokens` por chamada;
+  - timeout de 25 s por chamada e de 50 s por pedido;
+  - até 8 ferramentas por passo;
+  - entrada de até 4 MB;
+  - 12 execuções por minuto por IP.
+- **Erros legíveis:** chave recusada, limite do gateway, timeout e gateway fora do ar viram uma mensagem curta na tela.
+  A chave nunca aparece em erro, log ou resposta.
+
+### Configurar na Vercel
+
+1. No projeto da Vercel: **Settings → Environment Variables**.
+2. Adicione `AI_API_KEY` (a chave, marcada como *Sensitive*), `AI_BASE_URL` = `https://ai-proxy.gogroupbr.com/v1` e
+   `AI_MODEL` = `latest`, para os ambientes Production e Preview.
+3. Faça um novo deploy (**Deployments → Redeploy**): as variáveis só valem para deploys feitos depois de salvas.
+4. Confira em `/api/agente/status` que aparece `"ligado": true`. Sem a chave, o agente aparece como "desligado" e o resto funciona igual.
+
+O `.env` local nunca vai para o repositório nem para a Vercel: está no `.gitignore` e no `.vercelignore`.
+
+## Como usei a IA
+
+- **No desenvolvimento:** usei um assistente de código (Claude) como par de programação. Ele ajudou a estruturar o motor de análise,
+  a escrever os testes e a revisar os textos. Os números não vêm da IA: saem do pandas e foram conferidos por testes (prazo em dias
+  úteis, deduplicação, priorização, detecção de uma causa plantada) e por recálculo com dados novos.
+- **No produto:** o agente de IA descrito acima.
+  - A IA cuida do que é linguagem e julgamento do caso: ler o contexto, escolher entre as ações e redigir as mensagens.
+  - As contas ficam com o código: prazo, risco, custos e causas vêm das ferramentas.
+  - O custo da ação é recalculado pelo app, e a lista de ações é validada fora do modelo.
+- **Testes do agente sem rede:** uma IA simulada percorre o loop de ferramentas. Os testes cobrem:
+  - ação com dinheiro pendente;
+  - ação fora da lista recusada;
+  - limite de passos;
+  - bloqueio de consulta a outro pedido;
+  - limite por IP;
+  - o app funcionando sem chave.
+- **Validação real:** rodei o agente no gateway em um atraso, uma falha de personalização e um item faltante, e no lote dos
+  3 primeiros da fila. As ações com dinheiro ficaram pendentes de aprovação. As rodadas apontaram dois ajustes, já aplicados:
+  explicar ao modelo que, no item faltante, o atraso conta até hoje; e não expor detalhes internos ao cliente.
 
 ## Principais resultados (dados originais, referência 30/09/2026)
 
@@ -143,3 +247,11 @@ Dois tipos podem sair da fila do time com automação: **pagamento pendente** (n
   estimado (R$ 8,1 mil/mês), o ponto de equilíbrio fica em torno de 2.500 pedidos/mês da Rota no Nordeste. Esse volume precisa ser confirmado.
 - **Dados sintéticos;** a causa de cada concentração (ex.: calibração da IMP-02) é hipótese a validar no chão de fábrica.
 - **Estado em memória:** reiniciar o app volta aos dados da pasta `dados/`.
+- **Agente de IA:**
+  - **Limite por IP:** fica em memória e conta por instância; na Vercel, cada instância conta separado e o IP vem de
+    `x-forwarded-for`. É uma proteção básica, não um controle de abuso de verdade, que exigiria armazenamento compartilhado
+    (Redis/KV) ou firewall.
+  - **Registro de aprovações:** fica só no navegador. Não há trilha de auditoria no servidor nem integração com o atendimento.
+  - **Erros do modelo:** ele pode errar o tom ou escolher uma ação discutível, e as respostas variam um pouco entre execuções.
+    Por isso tudo passa por revisão, com o roteiro padrão do app ao lado como referência.
+  - **Upload:** cada execução reenvia os arquivos e pode recalcular a análise (cerca de 4 s). Há um cache pequeno por instância.
