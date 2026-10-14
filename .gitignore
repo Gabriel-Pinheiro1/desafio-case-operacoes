@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 uploads/
 Desafio_AI-First_Gogroup.pdf
+.env

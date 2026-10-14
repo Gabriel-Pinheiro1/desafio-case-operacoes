@@ -1067,6 +1067,7 @@ def analisar(pedidos: pd.DataFrame, clientes: pd.DataFrame, transp: pd.DataFrame
             "fila_por_tipo": fila["tipo_excecao"].map(ROTULO_TIPO).value_counts().to_dict(),
         },
         "_df": p,
+        "_transp": t,  # tabela de transportadoras limpa (usada pelo agente)
     }
 
 
@@ -1079,7 +1080,7 @@ def carregar_padrao(pasta: str = "dados") -> tuple[pd.DataFrame, pd.DataFrame, p
 if __name__ == "__main__":
     import json
     res = analisar(*carregar_padrao())
-    res.pop("_df")
+    res.pop("_df"); res.pop("_transp")
     print(json.dumps(res["resumo"], indent=2, ensure_ascii=False))
     for c_ in res["causas"]:
         print(c_["id"], c_["rotulo"], c_["observado"], c_["excesso"], c_["ganho_mensal_estimado"], c_["dono"])

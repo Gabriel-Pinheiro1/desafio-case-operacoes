@@ -6,3 +6,4 @@ scripts/
 uploads/
 *.pdf
 requirements-dev.txt
+.env

@@ -9,9 +9,13 @@ Endpoints
   POST /api/upload          multipart: pedidos (obrig.), clientes (obrig.), transportadoras (opcional), params (JSON opcional)
   POST /api/reset           volta aos dados e parâmetros originais
   GET  /api/fila.csv        fila de hoje em CSV (para o time)
+  GET  /api/agente/status   agente de IA ligado/desligado, ações e limites
+  POST /api/agente          multipart: order_id (obrig.), params (JSON opcional) e, se houve upload,
+                            pedidos/clientes/transportadoras (o navegador reenvia; o servidor não guarda nada)
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -20,12 +24,17 @@ from datetime import date, datetime
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+import agente as AG
 import analise as A
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+AG.carregar_env(BASE)  # local: lê o .env (fora do git). Na Vercel as variáveis vêm de Settings -> Environment Variables.
+MAX_BYTES_AGENTE = 4 * 1024 * 1024  # entrada do agente (a Vercel limita o corpo a 4,5 MB)
+_limite_ip = AG.LimitePorIP()
+_cache_analise: dict[str, dict] = {}  # por instância; só evita recalcular a mesma entrada em sequência (modo lote)
 _lock = threading.Lock()
 _estado: dict = {}
 
@@ -78,7 +87,7 @@ def _garantir():
 def _payload():
     _garantir()
     res = _estado["res"]
-    out = {k: v for k, v in res.items() if k != "_df"}
+    out = {k: v for k, v in res.items() if not k.startswith("_")}
     out["meta"] = {"origem": _estado["origem"], "calculado_em": _estado["calculado_em"],
                    "linhas_pedidos": int(len(_estado["pedidos"])), "linhas_clientes": int(len(_estado["clientes"])),
                    "linhas_transportadoras": int(len(_estado["transp"])), "defaults": A.DEFAULT_PARAMS}
@@ -160,6 +169,89 @@ def api_fila_csv():
     csv = f.to_csv(index=False, sep=";", decimal=",")
     return Response(content="﻿" + csv, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=fila_hoje_{_estado['res']['resumo']['data_referencia']}.csv"})
+
+
+# ---------------------------------------------------------------------------
+# Agente de IA (agente.py)
+# ---------------------------------------------------------------------------
+def _ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return (fwd.split(",")[0].strip() if fwd else "") or (request.client.host if request.client else "?")
+
+
+def _analise_para_agente(ped_b: bytes | None, cli_b: bytes | None, tra_b: bytes | None, prm: dict) -> dict:
+    """Mesma regra do app: sem upload usa os dados originais; com upload, os arquivos vêm na própria requisição."""
+    if ped_b is None:
+        _garantir()
+        atuais = _estado.get("params", {})
+        if _estado.get("origem", "").startswith("dados originais") and                 json.dumps(A.mesclar_params(prm), sort_keys=True, default=str) == json.dumps(A.mesclar_params(atuais), sort_keys=True, default=str):
+            return _estado["res"]
+    h = hashlib.sha256()
+    for b in (ped_b, cli_b, tra_b):
+        h.update(hashlib.sha256(b or b"").digest())
+    h.update(json.dumps(prm, sort_keys=True, default=str).encode())
+    chave = h.hexdigest()
+    if chave in _cache_analise:
+        return _cache_analise[chave]
+    if ped_b is None:
+        ped, cli, tra = A.carregar_padrao(os.path.join(BASE, "dados"))
+    else:
+        ped, cli = A.ler_csv(ped_b), A.ler_csv(cli_b)
+        tra = A.ler_csv(tra_b) if tra_b else A.carregar_padrao(os.path.join(BASE, "dados"))[2]
+        prm.setdefault("data_referencia", "auto")
+    res = A.analisar(ped, cli, tra, prm)
+    if len(_cache_analise) >= 3:
+        _cache_analise.pop(next(iter(_cache_analise)))
+    _cache_analise[chave] = res
+    return res
+
+
+@app.get("/api/agente/status")
+def api_agente_status():
+    return JSONResponse(AG.status())
+
+
+@app.post("/api/agente")
+def api_agente(request: Request, order_id: str = Form(...), params: str | None = Form(None),
+               pedidos: UploadFile | None = File(None), clientes: UploadFile | None = File(None),
+               transportadoras: UploadFile | None = File(None)):
+    try:
+        tam = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        tam = 0
+    if tam > MAX_BYTES_AGENTE:
+        raise HTTPException(413, "Entrada grande demais para o agente (máx. 4 MB).")
+    if not AG.ligado():
+        raise HTTPException(503, "Agente desligado: configure a variável AI_API_KEY. O resto do app funciona normalmente.")
+    order_id = (order_id or "").strip()
+    if not AG.RE_ORDER_ID.match(order_id):
+        raise HTTPException(400, "ID de pedido inválido (use letras, números, - ou _; até 32 caracteres).")
+    if params and len(params) > 20000:
+        raise HTTPException(413, "Parâmetros grandes demais.")
+    if not _limite_ip.permitir(_ip(request)):
+        raise HTTPException(429, f"Limite de {AG.LIMITE_POR_MINUTO} execuções do agente por minuto atingido. Aguarde um pouco.")
+    try:
+        prm = json.loads(params) if params else {}
+        if not isinstance(prm, dict):
+            raise ValueError("params deve ser um objeto JSON")
+        ler = lambda f: f.file.read(MAX_BYTES_AGENTE + 1) if f is not None and f.filename else None  # noqa: E731
+        ped_b, cli_b, tra_b = ler(pedidos), ler(clientes), ler(transportadoras)
+        if any(b is not None and len(b) > MAX_BYTES_AGENTE for b in (ped_b, cli_b, tra_b)):
+            raise HTTPException(413, "Arquivo grande demais para o agente (máx. 4 MB).")
+        if (ped_b is None) != (cli_b is None):
+            raise ValueError("envie pedidos e clientes juntos")
+        res = _analise_para_agente(ped_b, cli_b, tra_b, prm)
+    except (ValueError, KeyError, json.JSONDecodeError) as e:
+        raise HTTPException(400, f"Não foi possível preparar os dados para o agente: {e}")
+    try:
+        out = AG.rodar_agente(order_id, AG.Contexto(res))
+    except KeyError:
+        raise HTTPException(404, f"Pedido {order_id} não está no backlog atual.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except AG.ErroIA as e:
+        raise HTTPException(502, str(e))
+    return JSONResponse(_nativo(out))
 
 
 if __name__ == "__main__":

@@ -127,6 +127,27 @@ textarea{width:100%;font-family:var(--mono);font-size:13px}
 .mono{font-family:var(--mono)}
 .muted{color:var(--ink-3)}
 footer{font-size:12px;color:var(--ink-3);padding:30px 0;border-top:1px solid var(--line)}
+/* Agente de IA */
+.btn.sm{padding:5px 12px;font-size:12px}
+.ag-status{display:inline-flex;align-items:center;gap:8px;font:600 12px var(--mono);padding:5px 12px;border-radius:999px;background:var(--paper-2);color:var(--ink-2)}
+.ag-status i{width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+.ag-status.on{background:var(--ok-soft);color:var(--ok)}.ag-status.on i{background:var(--ok)}
+.ag-status.off{background:var(--risk-soft);color:var(--risk)}.ag-status.off i{background:var(--risk)}
+.ag-case{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:14px}
+.ag-case.pend{border-left:4px solid var(--signal)}
+.ag-head{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.ag-head .oid{font-size:16px}
+.ag-acao{font:700 14px var(--mono);color:var(--ink);background:var(--paper-2);padding:3px 10px;border-radius:6px}
+.ag-body{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+@media(max-width:900px){.ag-body{grid-template-columns:1fr}}
+.ag-body h3{margin:0 0 6px}
+.ag-body p{margin:0;font-size:14px}
+.ag-msg{width:100%;min-height:120px;font:14px/1.45 var(--sans);background:#fff}
+.ag-trace{font-size:12.5px;color:var(--ink-2);margin-top:12px}
+.ag-trace summary{cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.ag-trace ol{margin:6px 0 0;padding-left:20px}
+.ag-dec{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.ag-prog{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
 </style>
 </head>
 <body>
@@ -138,6 +159,7 @@ footer{font-size:12px;color:var(--ink-3);padding:30px 0;border-top:1px solid var
     <button data-t="causas">Causas</button>
     <button data-t="params">Parâmetros e dados</button>
     <button data-t="qual">Qualidade dos dados</button>
+    <button data-t="agente">Agente de IA</button>
   </nav>
 </div></header>
 
@@ -241,7 +263,7 @@ footer{font-size:12px;color:var(--ink-3);padding:30px 0;border-top:1px solid var
     <div class="card">
       <h3>Fonte atual</h3>
       <div id="src-info" style="font-size:14px"></div>
-      <p class="note" style="margin-top:14px">Dados ficam só na memória deste computador. Nada é enviado para fora: não há chamadas a APIs externas e nenhum recurso de IA está ligado.</p>
+      <p class="note" style="margin-top:14px">A análise roda no servidor do app e não chama serviços externos. Só a aba <b>Agente de IA</b> envia dados para fora: os números de um pedido por vez, para o gateway de IA, sem identificar o cliente (sem ID e sem cidade).</p>
     </div>
   </div>
 
@@ -271,8 +293,39 @@ footer{font-size:12px;color:var(--ink-3);padding:30px 0;border-top:1px solid var
     <thead><tr><th>Dimensão</th><th>Segmento</th><th>Tipo</th><th class="n">Observado</th><th class="n">Esperado</th><th class="n">Excesso</th><th class="n">Lift</th></tr></thead>
     <tbody id="q-conc"></tbody></table></div>
 </section>
+<!-- ============ AGENTE ============ -->
+<section class="tab" id="t-agente">
+  <div class="kicker">Agente com ferramentas · ações simuladas</div>
+  <h1>Agente da fila de <em>exceções</em></h1>
+  <p class="lede">Escolha um pedido da fila. O agente investiga com as mesmas contas do app (pedido, cliente, SLA da transportadora na UF, causa sistêmica e custo de cada alternativa), escolhe uma ação de uma lista fechada e escreve os rascunhos das mensagens. Nada é executado: reenvio, reembolso e reprodução da personalização ficam <b>pendentes de aprovação humana</b>.</p>
+  <div class="toolbar" style="margin-top:20px"><span class="ag-status" id="ag-status"><i></i>verificando…</span><span class="muted" id="ag-status-sub" style="font-size:12.5px"></span></div>
+  <div class="split">
+    <div class="card"><h3>Um pedido</h3>
+      <form id="ag-form" style="display:flex;gap:10px;flex-wrap:wrap">
+        <input id="ag-oid" list="ag-oids" placeholder="ID do pedido (ex.: GB7025382)" maxlength="32" style="flex:1;min-width:220px" autocomplete="off">
+        <datalist id="ag-oids"></datalist>
+        <button class="btn sig" type="submit" id="ag-btn" disabled>Rodar agente</button>
+      </form>
+      <p class="muted" style="font-size:12.5px;margin:10px 0 0">Ou use o botão "Rodar agente" em cada linha da Fila de hoje.</p></div>
+    <div class="card"><h3>Revisão em lote</h3>
+      <form id="ag-lote" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:14px">Processar os</label><input id="ag-n" type="number" min="1" max="8" value="5" style="width:70px">
+        <label style="font-size:14px">primeiros da fila</label>
+        <button class="btn" type="submit" id="ag-lote-btn" disabled>Processar</button>
+      </form>
+      <p class="ag-prog" id="ag-prog" style="margin:10px 0 0">Roda o agente em sequência (máx. 8) e junta as recomendações abaixo para revisão.</p></div>
+  </div>
+  <div id="ag-list"></div>
+  <h2>Registro de decisões</h2>
+  <p class="lede">Aprovações e recusas ficam só neste navegador. É uma simulação: nenhum dinheiro é movimentado e nenhuma mensagem é enviada.</p>
+  <div class="toolbar"><button type="button" class="btn ghost sm" id="ag-reg-clear">Limpar registro</button><span class="muted" id="ag-reg-count"></span></div>
+  <div class="tablewrap" style="max-height:420px"><table>
+    <thead><tr><th>Quando</th><th>Pedido</th><th>Ação</th><th class="n">Custo</th><th>Decisão</th></tr></thead>
+    <tbody id="ag-reg"></tbody></table></div>
+  <p class="note" style="margin-top:16px">Limites: até 6 passos e 1.200 tokens por chamada ao modelo, 50 s por pedido e 12 execuções por minuto por IP. Os textos dos arquivos são tratados como dado, nunca como instrução. O agente recomenda; quem decide é a pessoa que revisa.</p>
+</section>
 </main>
-<footer class="wrap">Desafio AI-First · Problema 2 (Operações). Dados sintéticos. Análise local em Python (pandas + FastAPI).</footer>
+<footer class="wrap">Desafio AI-First · Problema 2 (Operações). Dados sintéticos. Análise em Python (pandas + FastAPI); agente de IA com ferramentas e ações simuladas.</footer>
 <div class="toast" id="toast"></div>
 <div class="loading" id="loading">recalculando…</div>
 
@@ -364,6 +417,7 @@ function renderFila(R,P){
   selT.innerHTML='<option value="">Todos os tipos</option>'+[...new Set(f.map(r=>r.rotulo_tipo))].sort().map(t=>`<option>${esc(t)}</option>`).join("");
   selS.innerHTML='<option value="">Todos os status</option>'+[...new Set(f.map(r=>r.status))].sort().map(t=>`<option>${esc(t)}</option>`).join("");
   selT.value=cur[0]; selS.value=cur[1]; drawFila();
+  $("#ag-oids").innerHTML=D.fila.map(r=>`<option value="${esc(r.order_id)}">${esc(r.posicao+" · "+r.rotulo_tipo)}</option>`).join("");
 }
 function drawFila(){
   const t=$("#fi-tipo").value, s=$("#fi-status").value, q=$("#fi-busca").value.toLowerCase();
@@ -377,7 +431,8 @@ function drawFila(){
     <td class="n">${r.atraso_du}<div class="muted" style="font-size:11px">prazo ${dt(r.prometida_correta)}<br>sistema ${dt(r.data_prometida)}</div></td>
     <td><div class="riskbar"><i style="width:${Math.max(2,r.p_cancel_hoje*120)}px;opacity:.45"></i>${pct(r.p_cancel_hoje)} → <i style="width:${Math.max(2,r.p_cancel_espera*120)}px"></i>${pct(r.p_cancel_espera)}</div></td>
     <td class="n"><b>${brl2(r.custo_de_esperar)}</b></td>
-    <td><div class="motivo">${esc(r.motivo)}</div><div class="acao" style="margin-top:5px"><b style="color:var(--signal)">→</b> ${esc(r.acao_recomendada)}</div></td></tr>`).join("");
+    <td><div class="motivo">${esc(r.motivo)}</div><div class="acao" style="margin-top:5px"><b style="color:var(--signal)">→</b> ${esc(r.acao_recomendada)}</div>
+      <button type="button" class="btn ghost sm ag-run" data-oid="${esc(r.order_id)}" style="margin-top:8px" ${AG_ON?"":'disabled title="Agente desligado"'}>Rodar agente</button></td></tr>`).join("");
 }
 ["#fi-tipo","#fi-status"].forEach(s=>$(s).onchange=drawFila); $("#fi-busca").oninput=drawFila;
 
@@ -476,7 +531,102 @@ function renderQual(R){
   $("#q-conc").innerHTML=D.concentracoes.map(c=>`<tr><td>${esc(c.dimensao)}</td><td><b>${esc(c.segmento)}</b></td><td>${esc(c.tipo_excecao)}</td><td class="n">${num(c.observado)}</td><td class="n">${num(c.esperado,1)}</td><td class="n">${num(c.excesso,1)}</td><td class="n">${num(c.lift,1)}×</td></tr>`).join("");
 }
 
-api("/api/analise").then(()=>{const h=location.hash.slice(1);const b=h&&document.querySelector(`#nav button[data-t="${h}"]`);if(b)b.click();}).catch(()=>{});
+// ============ AGENTE DE IA ============
+let AG_ON=false, AG_INFO=null;
+const AG_REG_KEY="mesa_agente_registro";
+const regLer=()=>{try{return JSON.parse(localStorage.getItem(AG_REG_KEY)||"[]")}catch{return[]}};
+const regSalvar=r=>localStorage.setItem(AG_REG_KEY,JSON.stringify(r.slice(-300)));
+const regAdd=(oid,acao,custo,decisao)=>{const r=regLer();r.push({quando:new Date().toLocaleString("pt-BR"),order_id:oid,acao,custo,decisao});regSalvar(r);agReg()};
+const SIT={pendente_aprovacao:["pendente de aprovação humana","s"],pronta_para_revisao:["rascunho pronto para revisão","ok"],aprovada:["aprovada (simulado)","ok"],recusada:["recusada","r"]};
+async function agStatus(){
+  try{AG_INFO=await (await fetch("/api/agente/status")).json();AG_ON=!!AG_INFO.ligado}catch{AG_ON=false}
+  const el=$("#ag-status");el.className="ag-status "+(AG_ON?"on":"off");
+  el.innerHTML=`<i></i>${AG_ON?"ligado · modelo "+esc(AG_INFO.modelo):"desligado"}`;
+  $("#ag-status-sub").textContent=AG_ON?`ações permitidas: ${Object.keys(AG_INFO.acoes).join(", ")}`:"Configure AI_API_KEY (e AI_BASE_URL/AI_MODEL) nas variáveis de ambiente. O resto do app funciona normalmente.";
+  ["#ag-btn","#ag-lote-btn"].forEach(s=>$(s).disabled=!AG_ON);
+  if(D)drawFila();
+}
+function agForm(oid){
+  // Sem estado no servidor: vão junto os parâmetros atuais e, se houve upload, os mesmos arquivos.
+  const fd=new FormData();fd.append("order_id",oid);fd.append("params",JSON.stringify(D?.params||{}));
+  if(ULTIMO_UPLOAD)for(const [k,v] of ULTIMO_UPLOAD)if(k!=="params")fd.append(k,v);
+  return fd;
+}
+async function agRodar(oid){
+  const r=await fetch("/api/agente",{method:"POST",body:agForm(oid)});
+  let j;try{j=await r.json()}catch{throw new Error(`Erro ${r.status} no servidor`)}
+  if(!r.ok)throw new Error(j.detail||r.statusText);
+  return j;
+}
+function agCard(o){
+  const c=o.recomendacao, id="ag-"+o.order_id;
+  const tok=(o.uso_tokens.prompt_tokens||0)+(o.uso_tokens.completion_tokens||0);
+  const trace=`<details class="ag-trace"><summary>${o.passos.length} consultas · ${o.n_chamadas_modelo} chamadas ao modelo · ${num(o.duracao_s,1)} s · ${num(tok)} tokens</summary><ol>${o.passos.map(p=>`<li><span class="mono">${esc(p.ferramenta)}</span> → ${esc(p.resumo)}</li>`).join("")}</ol>${o.recusas.length?`<div style="color:var(--risk)">Recusado pelo app: ${o.recusas.map(esc).join("; ")}</div>`:""}</details>`;
+  if(!c)return `<div class="ag-case" id="${id}"><div class="ag-head"><span class="oid">${esc(o.order_id)}</span><span class="pill r">sem recomendação</span></div><p>${esc(o.aviso)}</p>${trace}</div>`;
+  const [sl,sc]=SIT[c.situacao]||[c.situacao,""];
+  const custo=c.custo_estimado==null?"–":brl2(c.custo_estimado);
+  const dec=c.requer_aprovacao
+    ?`<button type="button" class="btn sig sm" data-dec="aprovada" data-oid="${esc(o.order_id)}">Aprovar ${esc(c.acao)} (${custo})</button><button type="button" class="btn ghost sm" data-dec="recusada" data-oid="${esc(o.order_id)}">Recusar</button><span class="muted" style="font-size:12.5px">Ação com dinheiro: só segue com aprovação humana. Simulado.</span>`
+    :`<button type="button" class="btn ghost sm" data-dec="revisada" data-oid="${esc(o.order_id)}">Marcar como revisado</button><span class="muted" style="font-size:12.5px">Sem custo além do contato. Copie o rascunho para o canal de atendimento.</span>`;
+  return `<div class="ag-case ${c.requer_aprovacao?"pend":""}" id="${id}">
+    <div class="ag-head"><span class="oid">${esc(o.order_id)}</span><span class="pill">${esc(o.rotulo_tipo)}</span><span class="muted" style="font-size:12.5px">${esc(o.marca)} · ${brl2(o.valor)}</span>
+      <span style="margin-left:auto" class="ag-acao">${esc(c.acao)}</span><span class="mono" style="font-size:13px">${custo}</span><span class="pill ${sc} ag-sit">${esc(sl)}</span></div>
+    <div class="ag-body">
+      <div><h3>Diagnóstico</h3><p>${esc(c.diagnostico)}</p><h3 style="margin-top:12px">Por que esta ação</h3><p>${esc(c.justificativa)}</p></div>
+      <div><h3>Mensagem ao cliente (rascunho)</h3><textarea class="ag-msg">${esc(c.mensagem_cliente)}</textarea>
+        ${c.mensagem_area?`<h3 style="margin-top:12px">Para ${esc(c.destinatario_area||"a área responsável")} (rascunho)</h3><textarea class="ag-msg">${esc(c.mensagem_area)}</textarea>`:""}</div>
+    </div>
+    <div class="ag-dec">${dec}</div>
+    ${trace}</div>`;
+}
+const AG_RES={};
+function agMostrar(o,topo){
+  AG_RES[o.order_id]=o;
+  const old=document.getElementById("ag-"+o.order_id);if(old)old.remove();
+  $("#ag-list").insertAdjacentHTML(topo?"afterbegin":"beforeend",agCard(o));
+  const c=o.recomendacao;
+  if(c)regAdd(o.order_id,c.acao,c.custo_estimado,c.requer_aprovacao?"pendente de aprovação humana":"rascunho gerado");
+}
+function agReg(){
+  const reg=regLer();$("#ag-reg-count").textContent=`${reg.length} registros`;
+  $("#ag-reg").innerHTML=[...reg].reverse().map(x=>`<tr><td class="mono" style="font-size:12px">${esc(x.quando)}</td><td class="oid">${esc(x.order_id)}</td><td class="mono">${esc(x.acao)}</td><td class="n">${x.custo==null?"–":brl2(x.custo)}</td><td>${esc(x.decisao)}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhum registro ainda.</td></tr>';
+}
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-dec]");
+  if(b){const oid=b.dataset.oid,o=AG_RES[oid],dec=b.dataset.dec;if(!o)return;
+    regAdd(oid,o.recomendacao.acao,o.recomendacao.custo_estimado,dec==="aprovada"?"APROVADA por pessoa (simulado)":dec==="recusada"?"RECUSADA por pessoa":"revisada");
+    const card=document.getElementById("ag-"+oid),sit=card.querySelector(".ag-sit");
+    if(dec!=="revisada"){const [sl,sc]=SIT[dec];sit.className="pill "+sc+" ag-sit";sit.textContent=sl;card.classList.remove("pend")}
+    card.querySelectorAll("[data-dec]").forEach(x=>x.disabled=true);
+    toast(dec==="aprovada"?"Aprovado (simulado): registrado neste navegador.":dec==="recusada"?"Recusado: registrado.":"Marcado como revisado.");return}
+  const r=e.target.closest(".ag-run");
+  if(r){document.querySelector('#nav button[data-t="agente"]').click();$("#ag-oid").value=r.dataset.oid;agUm(r.dataset.oid)}
+});
+async function agUm(oid){
+  oid=(oid||"").trim();if(!oid)return toast("Informe o ID do pedido.",true);
+  const b=$("#ag-btn");b.disabled=true;$("#ag-prog").textContent=`Investigando ${oid}…`;
+  try{agMostrar(await agRodar(oid),true);$("#ag-prog").textContent=`${oid}: pronto.`}
+  catch(e){toast(e.message,true);$("#ag-prog").textContent=`${oid}: ${e.message}`}
+  finally{b.disabled=!AG_ON}
+}
+$("#ag-form").onsubmit=e=>{e.preventDefault();agUm($("#ag-oid").value)};
+$("#ag-lote").onsubmit=async e=>{
+  e.preventDefault();const n=Math.max(1,Math.min(8,parseInt($("#ag-n").value)||5));
+  const ids=(D?.fila||[]).slice(0,n).map(r=>r.order_id);const b=$("#ag-lote-btn");b.disabled=true;
+  $("#ag-list").innerHTML="";let ok=0,pend=0;
+  for(const [i,oid] of ids.entries()){
+    $("#ag-prog").textContent=`Processando ${i+1} de ${ids.length}: ${oid}…`;
+    try{const o=await agRodar(oid);agMostrar(o,false);if(o.recomendacao){ok++;if(o.recomendacao.requer_aprovacao)pend++}}
+    catch(err){$("#ag-list").insertAdjacentHTML("beforeend",`<div class="ag-case"><div class="ag-head"><span class="oid">${esc(oid)}</span><span class="pill r">erro</span></div><p>${esc(err.message)}</p></div>`);
+      if(/Limite|desligado/.test(err.message))break}
+  }
+  $("#ag-prog").textContent=`Lote concluído: ${ok} de ${ids.length} com recomendação; ${pend} pendentes de aprovação humana.`;b.disabled=!AG_ON;
+};
+$("#ag-reg-clear").onclick=()=>{localStorage.removeItem(AG_REG_KEY);agReg()};
+agReg();
+
+api("/api/analise").then(()=>{const h=location.hash.slice(1);const b=h&&document.querySelector(`#nav button[data-t="${h}"]`);if(b)b.click();
+  agStatus();}).catch(()=>{agStatus()});
 </script>
 </body>
 </html>
