@@ -183,7 +183,7 @@ footer{font-size:12px;color:var(--ink-3);padding:30px 0;border-top:1px solid var
     <select id="fi-status"><option value="">Todos os status</option></select>
     <input id="fi-busca" placeholder="Buscar pedido, UF, transportadora…" style="min-width:260px">
     <span class="muted" id="fi-count"></span>
-    <a class="btn ghost" href="/api/fila.csv" style="margin-left:auto;text-decoration:none">Baixar CSV da fila</a>
+    <button type="button" class="btn ghost" id="fi-csv" style="margin-left:auto">Baixar CSV da fila</button>
   </div>
   <div class="tablewrap"><table>
     <thead><tr><th>#</th><th>Pedido</th><th>Exceção</th><th class="n">Valor</th><th class="n">Atraso (DU)</th><th>Risco: hoje → se esperar</th><th class="n">Custo de esperar</th><th style="min-width:340px">Por que hoje → ação recomendada</th></tr></thead>
@@ -440,11 +440,28 @@ function lerParams(){
   o.faixas_cancelamento=fx; o.feriados=$("#pf-feriados").value;
   return o;
 }
-$("#pf").onsubmit=async e=>{e.preventDefault();await api("/api/parametros",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lerParams())});toast("Parâmetros aplicados. Tudo foi recalculado.")};
-$("#pf-def").onclick=async()=>{await api("/api/parametros",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(D.meta.defaults)});toast("Parâmetros padrão restaurados.")};
+// O navegador guarda os arquivos enviados: trocar parâmetros depois de um upload reenvia os arquivos junto,
+// então o resultado não depende de o servidor lembrar do upload (na Vercel cada requisição pode cair numa instância nova).
+let ULTIMO_UPLOAD=null;
+function aplicarParams(prm){
+  if(!ULTIMO_UPLOAD)return api("/api/parametros",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(prm)});
+  const fd=new FormData();for(const [k,v] of ULTIMO_UPLOAD)fd.append(k,v);fd.append("params",JSON.stringify(prm));
+  return api("/api/upload",{method:"POST",body:fd});
+}
+$("#pf").onsubmit=async e=>{e.preventDefault();await aplicarParams(lerParams());toast("Parâmetros aplicados. Tudo foi recalculado.")};
+$("#pf-def").onclick=async()=>{await aplicarParams(D.meta.defaults);toast("Parâmetros padrão restaurados.")};
 $("#up-form").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);if(!fd.get("transportadoras")?.size)fd.delete("transportadoras");
-  await api("/api/upload",{method:"POST",body:fd});toast("Dados novos carregados e analisados.")};
-$("#reset-btn").onclick=async()=>{await api("/api/reset",{method:"POST"});toast("Dados e parâmetros originais restaurados.")};
+  fd.delete("params");await api("/api/upload",{method:"POST",body:fd});ULTIMO_UPLOAD=[...fd.entries()];toast("Dados novos carregados e analisados.")};
+$("#reset-btn").onclick=async()=>{await api("/api/reset",{method:"POST"});ULTIMO_UPLOAD=null;toast("Dados e parâmetros originais restaurados.")};
+// CSV da fila no mesmo formato do /api/fila.csv (separador ; e vírgula decimal, para abrir no Excel).
+$("#fi-csv").onclick=()=>{
+  const f=D?.fila||[];if(!f.length)return toast("A fila está vazia.",true);
+  const cols=Object.keys(f[0]);
+  const cel=v=>{if(v==null)return"";if(typeof v==="number")return String(v).replace(".",",");const s=String(v);return /[;"\n\r]/.test(s)?`"${s.replace(/"/g,'""')}"`:s};
+  const csv="\ufeff"+[cols.join(";"),...f.map(r=>cols.map(c=>cel(Array.isArray(r[c])?r[c].join(" | "):r[c])).join(";"))].join("\r\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=`fila_hoje_${D.resumo.data_referencia}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
 
 function renderQual(R){
   const q=D.qualidade, alta=q.filter(x=>x.severidade==="alta"&&x.linhas>0);

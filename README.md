@@ -9,8 +9,8 @@ Ela responde às quatro perguntas do desafio com números em R$ e recalcula tudo
 ```bash
 # 1) uma vez: criar o ambiente e instalar as dependências
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt      # Windows
-# .venv/bin/python -m pip install -r requirements.txt        # Linux/macOS
+.venv\Scripts\python -m pip install -r requirements-dev.txt  # Windows (app + testes)
+# .venv/bin/python -m pip install -r requirements-dev.txt    # Linux/macOS
 
 # 2) subir o app
 .venv\Scripts\python app.py
@@ -23,6 +23,13 @@ python -m venv .venv
 Python 3.11, pandas, FastAPI e uvicorn. Os gráficos usam Chart.js e as fontes vêm do Google Fonts, ambos por CDN.
 Sem internet a página continua funcionando: os números aparecem nas tabelas e no lugar dos gráficos surge um aviso.
 Nada sai do computador: não há chamadas a APIs externas e não há recurso de IA ligado.
+
+## Publicar na Vercel
+
+O `app.py` expõe o objeto `app` (FastAPI) na raiz, que a Vercel reconhece sozinha. Em vercel.com: **Add New → Project**, importe este
+repositório do GitHub e clique em **Deploy** (Framework Preset: FastAPI, ou deixe *Other*; sem comandos extras).
+O app não depende de memória entre requisições: quem chega numa instância nova carrega os dados originais, o upload vai inteiro
+na própria requisição, trocar parâmetros depois de um upload reenvia os arquivos e o CSV da fila é gerado no navegador.
 
 ## O que tem na interface
 

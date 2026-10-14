@@ -68,7 +68,15 @@ def _carregar_original():
     _recalcular(ped, cli, tra, dict(A.DEFAULT_PARAMS), origem="dados originais (pasta dados/)")
 
 
+def _garantir():
+    # Na Vercel cada requisição pode cair numa instância nova, sem o estado em memória e sem o evento de inicialização:
+    # quem chega sem estado carrega os dados originais. O que vem de upload vai inteiro na própria requisição.
+    if "res" not in _estado:
+        _carregar_original()
+
+
 def _payload():
+    _garantir()
     res = _estado["res"]
     out = {k: v for k, v in res.items() if k != "_df"}
     out["meta"] = {"origem": _estado["origem"], "calculado_em": _estado["calculado_em"],
@@ -98,6 +106,7 @@ def api_analise():
 
 @app.get("/api/backlog")
 def api_backlog():
+    _garantir()
     p = _estado["res"]["_df"]
     cols = ["order_id", "marca", "tipo_excecao", "status", "valor", "transportadora", "uf", "data_pedido",
             "data_prometida", "prometida_correta", "data_entrega", "atraso_du", "p_cancel_hoje", "custo_de_esperar",
@@ -112,6 +121,7 @@ def api_backlog():
 
 @app.post("/api/parametros")
 async def api_parametros(params: dict):
+    _garantir()
     try:
         _recalcular(params=params)
     except Exception as e:  # noqa: BLE001
@@ -122,6 +132,7 @@ async def api_parametros(params: dict):
 @app.post("/api/upload")
 async def api_upload(pedidos: UploadFile = File(...), clientes: UploadFile = File(...),
                      transportadoras: UploadFile | None = File(None), params: str | None = Form(None)):
+    _garantir()
     try:
         ped = A.ler_csv(await pedidos.read())
         cli = A.ler_csv(await clientes.read())
@@ -144,6 +155,7 @@ def api_reset():
 
 @app.get("/api/fila.csv")
 def api_fila_csv():
+    _garantir()
     f = pd.DataFrame(_estado["res"]["fila"])
     csv = f.to_csv(index=False, sep=";", decimal=",")
     return Response(content="﻿" + csv, media_type="text/csv; charset=utf-8",
