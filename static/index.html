@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exceções de pedidos · Mesa de operações</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --paper:#F3EFE6; --paper-2:#EAE4D7; --card:#FBF9F4; --ink:#17171B; --ink-2:#4A4A52; --ink-3:#85848C;
+  --line:#D9D2C3; --signal:#E4570E; --signal-soft:#FBE3D3; --ok:#0E6E5C; --ok-soft:#D6EDE6;
+  --warn:#B7791F; --risk:#A3281C; --risk-soft:#F6DCD7; --blue:#2B4C7E;
+  --serif:"Instrument Serif", Georgia, serif; --sans:"Instrument Sans", "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", Consolas, monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;z-index:0;
+  background-image:radial-gradient(rgba(23,23,27,.05) 1px,transparent 1px);background-size:4px 4px}
+a{color:var(--blue)}
+.wrap{max-width:1320px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+header.top{border-bottom:2px solid var(--ink);background:var(--paper);position:sticky;top:0;z-index:10}
+.top .wrap{display:flex;align-items:center;gap:28px;height:64px}
+.brand{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
+.brand b{font-family:var(--serif);font-size:28px;font-weight:400;letter-spacing:-.01em}
+.brand span{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.12em}
+nav{display:flex;gap:2px;margin-left:auto}
+nav button{font:600 13px var(--sans);background:none;border:0;padding:8px 14px;border-radius:999px;cursor:pointer;color:var(--ink-2)}
+nav button:hover{background:var(--paper-2)}
+nav button.on{background:var(--ink);color:var(--paper)}
+.meta{font-family:var(--mono);font-size:11px;color:var(--ink-3);padding:10px 0 0}
+section.tab{display:none;padding:28px 0 80px;animation:rise .45s ease both}
+section.tab.on{display:block}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.stagger>*{animation:none}
+.stagger>*:nth-child(2){animation-delay:.05s}.stagger>*:nth-child(3){animation-delay:.1s}
+.stagger>*:nth-child(4){animation-delay:.15s}.stagger>*:nth-child(5){animation-delay:.2s}.stagger>*:nth-child(6){animation-delay:.25s}
+h1,h2,h3{font-weight:400;margin:0}
+h1{font-family:var(--serif);font-size:54px;line-height:1.02;letter-spacing:-.02em;max-width:980px}
+h1 em{color:var(--signal);font-style:italic}
+h2{font-family:var(--serif);font-size:34px;letter-spacing:-.01em;margin:44px 0 6px}
+h3{font:700 13px var(--sans);text-transform:uppercase;letter-spacing:.1em;color:var(--ink-2);margin-bottom:10px}
+.lede{font-size:17px;color:var(--ink-2);max-width:860px;margin:14px 0 0}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--signal);margin-bottom:12px}
+.grid{display:grid;gap:16px}
+.k4{grid-template-columns:repeat(4,1fr)} .k3{grid-template-columns:repeat(3,1fr)} .k2{grid-template-columns:1.3fr 1fr}
+@media(max-width:1000px){.k4,.k3,.k2{grid-template-columns:1fr 1fr}} @media(max-width:640px){.k4,.k3,.k2{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+.kpi{position:relative;overflow:hidden}
+.kpi .lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+.kpi .val{font-family:var(--mono);font-size:32px;font-weight:500;letter-spacing:-.03em;margin:6px 0 4px;white-space:nowrap}
+.kpi .sub{font-size:13px;color:var(--ink-3)}
+.kpi.hot{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.kpi.hot .lbl,.kpi.hot .sub{color:#BDB8AD}
+.kpi.hot .val{color:#FFB48A}
+.kpi.good .val{color:var(--ok)}
+.kpi.risk .val{color:var(--risk)}
+.findings{counter-reset:f;list-style:none;padding:0;margin:0}
+.findings li{counter-increment:f;display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:baseline;padding:14px 0;border-bottom:1px dashed var(--line)}
+.findings li::before{content:counter(f,decimal-leading-zero);font-family:var(--mono);color:var(--signal);font-size:13px}
+.findings .t{font-weight:600}
+.findings .d{color:var(--ink-2);font-size:14px}
+.findings .r{font-family:var(--mono);font-weight:600;white-space:nowrap;text-align:right}
+.findings .r small{display:block;font-weight:400;color:var(--ink-3);font-size:11px}
+.chartbox{position:relative;height:300px}
+.nochart{font-family:var(--mono);font-size:12px;color:var(--ink-3);padding:30px 0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font:600 11.5px var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);text-align:left;padding:10px 10px;border-bottom:2px solid var(--ink);position:sticky;top:0;background:var(--card);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+tr:hover td{background:#F6F2E8}
+.tablewrap{max-height:680px;overflow:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.pill{display:inline-block;font:600 11px var(--sans);padding:2px 9px;border-radius:999px;background:var(--paper-2);color:var(--ink-2);white-space:nowrap}
+.pill.s{background:var(--signal-soft);color:#9A3A07}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.r{background:var(--risk-soft);color:var(--risk)}
+.pos{font-family:var(--mono);font-weight:600;color:var(--ink-3)}
+.oid{font-family:var(--mono);font-weight:600}
+.acao{font-size:13px;color:var(--ink)}
+.motivo{font-size:12.5px;color:var(--ink-2)}
+.riskbar{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;white-space:nowrap}
+.riskbar i{display:inline-block;height:6px;border-radius:3px;background:var(--signal)}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:16px 0}
+select,input,textarea{font:500 14px var(--sans);padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+input[type=number]{font-family:var(--mono);width:100%}
+textarea{width:100%;font-family:var(--mono);font-size:13px}
+.btn{font:600 13.5px var(--sans);padding:10px 18px;border-radius:999px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.sig{background:var(--signal);border-color:var(--signal)}
+.btn:disabled{opacity:.5;cursor:wait}
+.cause{display:grid;grid-template-columns:70px 1fr 230px;gap:20px;padding:22px 0;border-top:1px solid var(--line)}
+.cause:first-of-type{border-top:2px solid var(--ink)}
+.cause .id{font-family:var(--serif);font-size:44px;line-height:1;color:var(--signal)}
+.cause .ttl{font-weight:700;font-size:17px}
+.cause .why{color:var(--ink-2);font-size:14px;margin:6px 0}
+.cause .act{background:var(--paper-2);border-left:3px solid var(--signal);padding:10px 14px;border-radius:0 8px 8px 0;font-size:14px;margin-top:10px}
+.cause .ev{font-size:13px;color:var(--ink-2);margin:6px 0 0;padding-left:18px}
+.cause .money{text-align:right}
+.cause .money .big{font-family:var(--mono);font-size:26px;font-weight:600;color:var(--ok)}
+.cause .money .s{font-size:12px;color:var(--ink-3)}
+.bar2{height:8px;background:var(--paper-2);border-radius:4px;position:relative;margin:8px 0 2px;overflow:hidden}
+.bar2 i{position:absolute;left:0;top:0;bottom:0;background:var(--ink-3);border-radius:4px}
+.bar2 b{position:absolute;left:0;top:0;bottom:0;background:var(--signal);border-radius:4px;opacity:.9}
+.spark{display:flex;align-items:flex-end;gap:2px;height:34px;margin-top:10px;justify-content:flex-end}
+.spark i{width:7px;background:var(--ink);opacity:.75;border-radius:1px}
+.note{font-size:13px;color:var(--ink-2);background:var(--paper-2);border-radius:10px;padding:12px 16px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.split,.cause{grid-template-columns:1fr}}
+.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
+@media(max-width:900px){.form-grid{grid-template-columns:1fr 1fr}}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:4px}
+.field small{display:block;color:var(--ink-3);font-size:11.5px;margin-top:3px}
+.field.mine label::after{content:" · premissa própria";color:var(--signal);font-weight:500}
+.faixas{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.faixas div{display:flex;gap:4px;align-items:center;font-family:var(--mono);font-size:12px}
+.faixas input{width:58px;padding:8px 6px}.faixas input[data-c="2"]{width:76px}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:18px;text-align:left;background:var(--card)}
+.drop input{width:100%;margin-top:6px}
+.sev-alta{color:var(--risk);font-weight:700}.sev-media{color:var(--warn);font-weight:700}.sev-info{color:var(--ink-3)}
+.toast{position:fixed;right:24px;bottom:24px;background:var(--ink);color:var(--paper);padding:12px 18px;border-radius:12px;font-size:14px;z-index:99;display:none;max-width:460px}
+.toast.err{background:var(--risk)}
+.loading{position:fixed;inset:0;background:rgba(243,239,230,.6);display:none;align-items:center;justify-content:center;z-index:50;font-family:var(--mono);font-size:13px}
+.legend-inline{display:flex;gap:16px;font-size:12px;color:var(--ink-3);margin-top:6px}
+.legend-inline span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--ink-3)}
+footer{font-size:12px;color:var(--ink-3);padding:30px 0;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div class="brand"><b>Mesa de exceções</b><span>Operações · Gocase &amp; GoBeauté</span></div>
+  <nav id="nav">
+    <button data-t="exec" class="on">Visão executiva</button>
+    <button data-t="fila">Fila de hoje</button>
+    <button data-t="causas">Causas</button>
+    <button data-t="params">Parâmetros e dados</button>
+    <button data-t="qual">Qualidade dos dados</button>
+  </nav>
+</div></header>
+
+<div class="wrap"><div class="meta" id="meta">carregando…</div></div>
+
+<main class="wrap">
+<!-- ============ EXECUTIVO ============ -->
+<section class="tab on" id="t-exec">
+  <div class="kicker" id="ex-kicker">Data de referência</div>
+  <h1 id="ex-h1">…</h1>
+  <p class="lede" id="ex-lede"></p>
+
+  <div class="grid k4 stagger" style="margin-top:28px" id="ex-kpis"></div>
+
+  <h2>O que está causando as exceções</h2>
+  <p class="lede" id="ex-causas-lede"></p>
+  <div class="grid k2" style="margin-top:18px">
+    <div class="card"><h3>Principais achados, por ganho mensal estimado</h3><ol class="findings" id="ex-findings"></ol></div>
+    <div class="card"><h3>Ganho mensal estimado por causa (R$)</h3><div class="chartbox" id="cb-causas"><canvas id="ch-causas"></canvas></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Excesso de exceções acima do esperado × custo médio de cada uma (custo direto + perda esperada + contato), projetado para 30 dias.</p></div>
+  </div>
+
+  <h2>Evolução semanal</h2>
+  <p class="lede" id="ex-sem-lede">Exceções por semana do pedido.</p>
+  <div class="card" style="margin-top:16px"><div class="chartbox" id="cb-semanal"><canvas id="ch-semanal"></canvas></div></div>
+
+  <h2>Como os números foram calculados</h2>
+  <div class="grid k3" style="margin-top:16px">
+    <div class="card"><h3>Prazo</h3><p style="margin:0;font-size:14px">A data prometida foi recalculada pela regra do negócio: 1 dia útil de separação + SLA da transportadora em dias úteis, a partir do 1º dia útil após o pedido, sem fins de semana e feriados. O sistema calcula em dias corridos, então a data dele vem antes da correta.</p></div>
+    <div class="card"><h3>Risco</h3><p style="margin:0;font-size:14px">Perda esperada = probabilidade de cancelamento (tabela de atraso) × (reembolso + recompra perdida). A recompra perdida é 50% da chance de recompra × ticket médio do cliente × margem bruta. O <b>custo de esperar</b> é quanto essa perda cresce se o pedido ficar mais <span class="mono" id="m-h">5</span> dias úteis na fila.</p></div>
+    <div class="card"><h3>Recuperação</h3><p style="margin:0;font-size:14px">Simulação do backlog com a mesma capacidade, em ordem de chegada (como é hoje) e na ordem priorizada. A diferença de perda esperada é o que a priorização recupera. As causas sistêmicas valem pelo excesso de casos que deixariam de existir.</p></div>
+  </div>
+</section>
+
+<!-- ============ FILA ============ -->
+<section class="tab" id="t-fila">
+  <div class="kicker">Com a capacidade atual</div>
+  <h1 id="fi-h1">…</h1>
+  <p class="lede" id="fi-lede"></p>
+  <div class="grid k4 stagger" style="margin-top:22px" id="fi-kpis"></div>
+  <div class="toolbar">
+    <select id="fi-tipo"><option value="">Todos os tipos</option></select>
+    <select id="fi-status"><option value="">Todos os status</option></select>
+    <input id="fi-busca" placeholder="Buscar pedido, UF, transportadora…" style="min-width:260px">
+    <span class="muted" id="fi-count"></span>
+    <a class="btn ghost" href="/api/fila.csv" style="margin-left:auto;text-decoration:none">Baixar CSV da fila</a>
+  </div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>#</th><th>Pedido</th><th>Exceção</th><th class="n">Valor</th><th class="n">Atraso (DU)</th><th>Risco: hoje → se esperar</th><th class="n">Custo de esperar</th><th style="min-width:340px">Por que hoje → ação recomendada</th></tr></thead>
+    <tbody id="fi-body"></tbody>
+  </table></div>
+  <p class="note" style="margin-top:16px">Ordem da fila: <b>custo de esperar</b> em R$, ou seja, quanto a perda esperada cresce se o pedido não for tratado hoje. Pedidos já no teto da tabela (mais de 10 DU, 40%) continuam no backlog e são tratados nos dias seguintes. Para eles a espera já não muda a probabilidade de cancelar, e a ação (reenvio ou reembolso) é a mesma. Atrasos já entregues e "atrasos" que não estão atrasados pelo prazo correto ficam para o fim: basta encerrar ou reclassificar.</p>
+</section>
+
+<!-- ============ CAUSAS ============ -->
+<section class="tab" id="t-causas">
+  <div class="kicker">Caso a caso × mudança de processo</div>
+  <h1 id="ca-h1">…</h1>
+  <p class="lede" id="ca-lede"></p>
+  <div class="grid k4 stagger" style="margin-top:22px" id="ca-kpis"></div>
+
+  <h2>Causas sistêmicas: exigem mudar o processo</h2>
+  <p class="lede">Detectadas automaticamente: para cada tipo de exceção, comparamos cada segmento (transportadora × região, CD × turno, máquina, lote × SKU, marca…) com o esperado, usando as outras exceções do segmento como base de volume. Ficam só as concentrações com mecanismo plausível e estatisticamente fortes (Poisson p &lt; 0,0001). Cada pedido entra em no máximo uma causa.</p>
+  <div id="ca-list" style="margin-top:14px"></div>
+
+  <h2>Falhas de sistema</h2>
+  <div id="ca-proc" class="grid k2" style="margin-top:14px"></div>
+
+  <h2>Caso a caso: roteiro padrão</h2>
+  <p class="lede">O que não tem concentração clara se resolve pedido a pedido. Dois tipos podem ser automatizados e saem da fila do time.</p>
+  <div class="tablewrap" style="margin-top:14px"><table>
+    <thead><tr><th>Tipo</th><th class="n">Casos</th><th class="n">Custo direto</th><th class="n">Perda esperada</th><th>Roteiro</th></tr></thead>
+    <tbody id="ca-cac"></tbody></table></div>
+
+  <h2>Transportadoras: prazo correto × prazo do sistema</h2>
+  <div class="tablewrap" style="margin-top:14px"><table>
+    <thead><tr><th>Transportadora</th><th class="n">Entregues (com exceção)</th><th class="n">Atraso médio (prazo correto)</th><th class="n">% atrasados</th><th class="n">Atraso médio (prazo do sistema)</th></tr></thead>
+    <tbody id="ca-transp"></tbody></table></div>
+</section>
+
+<!-- ============ PARÂMETROS ============ -->
+<section class="tab" id="t-params">
+  <div class="kicker">Recalcula tudo, sem mexer em código</div>
+  <h1>Parâmetros e dados</h1>
+  <p class="lede">Altere a capacidade, os custos, os feriados ou a tabela de cancelamento, ou envie novos CSVs no mesmo formato. Fila, causas e números são refeitos na hora.</p>
+
+  <div class="split" style="margin-top:24px">
+    <div class="card">
+      <h3>Novos dados</h3>
+      <form id="up-form">
+        <div class="grid" style="gap:10px">
+          <div class="drop"><b>pedidos_excecao.csv</b> <span class="muted">(obrigatório)</span><input type="file" name="pedidos" accept=".csv" required></div>
+          <div class="drop"><b>clientes.csv</b> <span class="muted">(obrigatório)</span><input type="file" name="clientes" accept=".csv" required></div>
+          <div class="drop"><b>transportadoras.csv</b> <span class="muted">(opcional; se vazio, mantém o atual)</span><input type="file" name="transportadoras" accept=".csv"></div>
+        </div>
+        <p class="muted" style="font-size:12.5px">No upload, a data de referência vira "auto" (última data de abertura de exceção do arquivo). Os demais parâmetros atuais são mantidos. Aceita separador , ou ; e UTF-8 ou Latin-1.</p>
+        <div style="display:flex;gap:10px"><button class="btn sig" type="submit" id="up-btn">Enviar e recalcular</button>
+        <button class="btn ghost" type="button" id="reset-btn">Voltar aos dados originais</button></div>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Fonte atual</h3>
+      <div id="src-info" style="font-size:14px"></div>
+      <p class="note" style="margin-top:14px">Dados ficam só na memória deste computador. Nada é enviado para fora: não há chamadas a APIs externas e nenhum recurso de IA está ligado.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Parâmetros do negócio (parametros.md) e premissas</h3>
+    <form id="pf"><div class="form-grid" id="pf-grid"></div>
+      <div class="field" style="margin-top:16px"><label>Probabilidade de cancelamento por dias úteis de atraso</label><div class="faixas" id="pf-faixas"></div></div>
+      <div class="field" style="margin-top:14px"><label>Feriados (AAAA-MM-DD, separados por vírgula)</label><textarea id="pf-feriados" rows="2"></textarea></div>
+      <div style="display:flex;gap:10px;margin-top:18px"><button class="btn sig" type="submit" id="pf-btn">Recalcular</button>
+        <button class="btn ghost" type="button" id="pf-def">Restaurar padrão</button></div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ QUALIDADE ============ -->
+<section class="tab" id="t-qual">
+  <div class="kicker">Rigor com os dados</div>
+  <h1 id="q-h1">O que foi limpo, e por quê</h1>
+  <p class="lede" id="q-lede"></p>
+  <div class="grid k4 stagger" style="margin-top:22px" id="q-kpis"></div>
+  <div class="tablewrap" style="margin-top:20px;max-height:none"><table>
+    <thead><tr><th>Verificação</th><th class="n">Linhas</th><th>Ação</th><th>Detalhe</th></tr></thead>
+    <tbody id="q-body"></tbody></table></div>
+  <h2>Concentrações brutas (antes da seleção)</h2>
+  <p class="lede">Todos os segmentos que passaram nos filtros, para auditoria. A seleção remove os redundantes (mesmo grupo de pedidos visto por outra dimensão).</p>
+  <div class="tablewrap" style="margin-top:14px"><table>
+    <thead><tr><th>Dimensão</th><th>Segmento</th><th>Tipo</th><th class="n">Observado</th><th class="n">Esperado</th><th class="n">Excesso</th><th class="n">Lift</th></tr></thead>
+    <tbody id="q-conc"></tbody></table></div>
+</section>
+</main>
+<footer class="wrap">Desafio AI-First · Problema 2 (Operações). Dados sintéticos. Análise local em Python (pandas + FastAPI).</footer>
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading">recalculando…</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const brl = v => v==null ? "–" : v.toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
+const brl2 = v => v==null ? "–" : v.toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:2,maximumFractionDigits:2});
+const num = (v,d=0) => v==null ? "–" : v.toLocaleString("pt-BR",{maximumFractionDigits:d,minimumFractionDigits:d});
+const pct = (v,d=0) => v==null ? "–" : (v*100).toLocaleString("pt-BR",{maximumFractionDigits:d})+"%";
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const espf = v => v<0.5 ? "≈0" : num(v,v<10?1:0);
+const liftf = v => v>=99 ? "mais de 50×" : num(v,1)+"×";
+const dt = s => s ? s.slice(8,10)+"/"+s.slice(5,7) : "–";
+let D = null, charts = {};
+
+document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("on",s.id==="t-"+b.dataset.t));
+  window.scrollTo({top:0}); history.replaceState(null,"","#"+b.dataset.t);
+});
+function toast(msg,err){const t=$("#toast");t.textContent=msg;t.className="toast"+(err?" err":"");t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",err?9000:3500)}
+function loading(on){$("#loading").style.display=on?"flex":"none"}
+const kpi=(lbl,val,sub,cls="")=>`<div class="card kpi ${cls}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`;
+
+async function api(url,opts){
+  loading(true);
+  try{const r=await fetch(url,opts);const j=await r.json();if(!r.ok)throw new Error(j.detail||r.statusText);D=j;render();return j}
+  catch(e){toast(e.message,true);throw e}finally{loading(false)}
+}
+
+function render(){
+  const R=D.resumo, P=D.params;
+  $("#meta").textContent=`Fonte: ${D.meta.origem} · ${num(D.meta.linhas_pedidos)} linhas de pedidos · calculado em ${D.meta.calculado_em} · referência ${dt(R.data_referencia)}/${R.data_referencia.slice(0,4)}`;
+  $("#m-h").textContent=P.horizonte_espera_du;
+  renderExec(R,P); renderFila(R,P); renderCausas(R,P); renderParams(P); renderQual(R);
+}
+
+function renderExec(R,P){
+  $("#ex-kicker").textContent=`Situação em ${dt(R.data_referencia)}/${R.data_referencia.slice(0,4)} · ${num(R.pedidos_em_excecao)} pedidos com exceção aberta`;
+  $("#ex-h1").innerHTML=`${brl(R.exposicao_total)} em jogo. A fila certa recupera <em>${brl(R.recuperado_priorizacao)}</em>; corrigir ${D.causas.length} causas evita <em>${brl(R.ganho_mensal_causas)}/mês</em>.`;
+  $("#ex-lede").innerHTML=`São ${num(R.pedidos_em_excecao)} exceções (${brl(R.valor_pedidos)} em pedidos, ${num(R.clientes_afetados)} clientes). O time trata ${num(R.capacidade_diaria)} por dia e entram cerca de ${num(R.entrada_media_du)} por dia útil, mas o backlog acumulado leva ${R.dias_para_zerar_backlog} dias úteis para zerar. Por isso a ordem importa. Hoje a fila anda por ordem de chegada; ordenada pelo custo de esperar, a mesma equipe perde ${brl(R.recuperado_priorizacao)} a menos no backlog atual.`;
+  $("#ex-kpis").innerHTML=
+    kpi("Dinheiro em risco",brl(R.exposicao_total),`${brl(R.custo_direto_resolver)} de reenvios/reproduções + ${brl(R.perda_esperada_se_esperar)} de perda esperada (cancelamento e recompra) se nada andar em ${P.horizonte_espera_du} DU`,"hot")+
+    kpi("Recuperado pela priorização",brl(R.recuperado_priorizacao),`perda esperada do backlog: ${brl(R.perda_backlog_fifo)} por ordem de chegada → ${brl(R.perda_backlog_prioridade)} priorizado`,"good")+
+    kpi("Ganho mensal com as causas",brl(R.ganho_mensal_causas),`${num(R.excesso_sistemico)} exceções acima do esperado em ${num(R.janela_dias)} dias; ≈ ${num(R.tratativas_mes_evitadas)} tratativas/mês a menos`,"good")+
+    kpi("Atrasos que não são atrasos",`${num(R.atrasos_falsos)} de ${num(R.atrasos_registrados)}`,`a data prometida do sistema está em dias corridos (${pct(R.prazo_sistema_errado_pct)} dos pedidos com data errada) · ${num(R.duplicatas_removidas)} exceções duplicadas removidas`,"risk");
+  const items=[...D.causas.map(c=>({t:c.rotulo,d:`${num(c.observado)} casos para ${espf(c.esperado)} esperados (${liftf(c.lift)}). ${c.dono}.`,r:brl(c.ganho_mensal_estimado),s:"por mês"})),
+    ...D.processo_extra.map(p=>({t:p.rotulo,d:p.evidencias.join("; ")+". "+p.dono+".",r:num(p.tratativas_mes_evitadas)+" trat.",s:"por mês liberadas"}))];
+  $("#ex-findings").innerHTML=items.map(i=>`<li><div><div class="t">${esc(i.t)}</div><div class="d">${esc(i.d)}</div></div><div class="r">${i.r}<small>${i.s}</small></div></li>`).join("");
+  const share=R.casos_sistemicos/Math.max(1,R.pedidos_em_excecao);
+  $("#ex-causas-lede").textContent=`${D.causas.length} concentrações explicam ${pct(share)} dos casos (${num(R.casos_sistemicos)} pedidos). Cada uma tem dono e ação. O resto é ruído de operação e se trata caso a caso, com roteiro padrão.`;
+  const onset=D.causas.map(c=>({c,e:(c.evidencias||[]).find(x=>x.startsWith("piora"))})).filter(x=>x.e);
+  $("#ex-sem-lede").textContent="Exceções por semana do pedido."+(onset.length?" Sinais de piora: "+onset.slice(0,3).map(x=>`${x.c.segmento} (${x.e.replace("piora a partir da ","desde a ")})`).join("; ")+".":"");
+  chartCausas(); chartSemanal();
+}
+
+function noChart(id){const b=document.getElementById(id);b.innerHTML='<div class="nochart">Gráfico indisponível (Chart.js não carregou; sem internet?). Os números estão nas tabelas.</div>'}
+function chartCausas(){
+  if(!window.Chart) return noChart("cb-causas");
+  charts.c && charts.c.destroy();
+  const cs=D.causas;
+  charts.c=new Chart($("#ch-causas"),{type:"bar",data:{labels:cs.map(c=>c.id+"  "+(c.segmento.length>24?c.segmento.slice(0,23)+"…":c.segmento)),datasets:[{data:cs.map(c=>c.ganho_mensal_estimado),backgroundColor:"#E4570E",borderRadius:4,barThickness:18}]},
+    options:{indexAxis:"y",maintainAspectRatio:false,layout:{padding:{left:6,right:8}},plugins:{legend:{display:false},tooltip:{callbacks:{label:x=>brl(x.raw)+"/mês"}}},
+      scales:{x:{grid:{color:"#E6DFD0"},ticks:{callback:v=>"R$ "+(v/1000).toLocaleString("pt-BR")+" mil",font:{family:"IBM Plex Mono",size:11}}},y:{grid:{display:false},ticks:{font:{family:"Instrument Sans",size:12}}}}}});
+}
+function chartSemanal(){
+  if(!window.Chart) return noChart("cb-semanal");
+  charts.s && charts.s.destroy();
+  const g=D.graficos.semanal, rot=Object.fromEntries(D.por_tipo.map(t=>[t.tipo_excecao,t.rotulo]));
+  const cores={atraso_entrega:"#E4570E",rastreio_parado:"#F2A06B",item_faltante:"#2B4C7E",avaria_transporte:"#7A8FB3",vazamento_produto:"#0E6E5C",falha_personalizacao:"#A3281C",ruptura_pos_venda:"#B7791F",devolvido_transportadora:"#C9BFA9",extravio:"#5C5B63",pagamento_pendente:"#D9D2C3",endereco_divergente:"#ABA597"};
+  const ordem=Object.keys(g.series).sort((a,b)=>g.series[b].reduce((x,y)=>x+y,0)-g.series[a].reduce((x,y)=>x+y,0));
+  charts.s=new Chart($("#ch-semanal"),{type:"bar",data:{labels:g.semanas.map(s=>"sem. "+dt(s)),datasets:ordem.map(k=>({label:rot[k]||k,data:g.series[k],backgroundColor:cores[k]||"#999",stack:"a"}))},
+    options:{maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{boxWidth:10,font:{family:"Instrument Sans",size:12}}}},
+      scales:{x:{stacked:true,grid:{display:false},ticks:{font:{family:"IBM Plex Mono",size:11}}},y:{stacked:true,grid:{color:"#E6DFD0"},ticks:{font:{family:"IBM Plex Mono",size:11}}}}}});
+}
+
+function renderFila(R,P){
+  const f=D.fila;
+  $("#fi-h1").innerHTML=`Os ${num(f.length)} pedidos para tratar hoje evitam <em>${brl(R.fila_hoje_custo_esperar)}</em> de perda esperada`;
+  $("#fi-lede").innerHTML=`Pela ordem de chegada (como é hoje), os ${num(f.length)} primeiros evitariam só ${brl(R.fifo_hoje_custo_esperar)}: a fila antiga gasta a capacidade com casos em que esperar já não muda nada. Cada linha traz o motivo e a ação.`;
+  const tipos={};f.forEach(r=>tipos[r.rotulo_tipo]=(tipos[r.rotulo_tipo]||0)+1);
+  const top=Object.entries(tipos).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k} (${v})`).join(", ");
+  const sist=f.filter(r=>r.causa_id).length, alto=f.filter(r=>r.cliente_alto_valor).length;
+  $("#fi-kpis").innerHTML=kpi("Capacidade hoje",num(P.capacidade_diaria)+" tratativas",`${num(R.horas_time_dia,0)} h de time (${num(P.minutos_por_tratativa)} min cada)`)+
+    kpi("Valor protegido",brl(f.reduce((a,r)=>a+r.valor,0)),`em pedidos; mais vistos: ${top}`)+
+    kpi("Ligados a causa sistêmica",`${num(sist)} de ${num(f.length)}`,"a tratativa resolve o caso; a causa segue para o dono")+
+    kpi("Clientes alto valor",num(alto),`receita acumulada acima de ${brl(P.limiar_cliente_alto_valor)}`);
+  const selT=$("#fi-tipo"), selS=$("#fi-status"), cur=[selT.value, selS.value];
+  selT.innerHTML='<option value="">Todos os tipos</option>'+[...new Set(f.map(r=>r.rotulo_tipo))].sort().map(t=>`<option>${esc(t)}</option>`).join("");
+  selS.innerHTML='<option value="">Todos os status</option>'+[...new Set(f.map(r=>r.status))].sort().map(t=>`<option>${esc(t)}</option>`).join("");
+  selT.value=cur[0]; selS.value=cur[1]; drawFila();
+}
+function drawFila(){
+  const t=$("#fi-tipo").value, s=$("#fi-status").value, q=$("#fi-busca").value.toLowerCase();
+  const rows=D.fila.filter(r=>(!t||r.rotulo_tipo===t)&&(!s||r.status===s)&&(!q||[r.order_id,r.uf,r.transportadora,r.marca,r.motivo].join(" ").toLowerCase().includes(q)));
+  $("#fi-count").textContent=`${rows.length} pedidos`;
+  $("#fi-body").innerHTML=rows.map(r=>`<tr>
+    <td class="pos">${r.posicao}</td>
+    <td><div class="oid">${esc(r.order_id)}</div><div class="muted" style="font-size:12px">${esc(r.marca)} · ${esc(r.transportadora)} · ${esc(r.uf)}</div></td>
+    <td><span class="pill ${r.causa_id?'s':''}">${esc(r.rotulo_tipo)}</span><div class="muted" style="font-size:11.5px;margin-top:3px">${esc(r.status.replace(/_/g," "))}${r.causa_id?' · '+r.causa_id:''}</div></td>
+    <td class="n">${brl2(r.valor)}</td>
+    <td class="n">${r.atraso_du}<div class="muted" style="font-size:11px">prazo ${dt(r.prometida_correta)}<br>sistema ${dt(r.data_prometida)}</div></td>
+    <td><div class="riskbar"><i style="width:${Math.max(2,r.p_cancel_hoje*120)}px;opacity:.45"></i>${pct(r.p_cancel_hoje)} → <i style="width:${Math.max(2,r.p_cancel_espera*120)}px"></i>${pct(r.p_cancel_espera)}</div></td>
+    <td class="n"><b>${brl2(r.custo_de_esperar)}</b></td>
+    <td><div class="motivo">${esc(r.motivo)}</div><div class="acao" style="margin-top:5px"><b style="color:var(--signal)">→</b> ${esc(r.acao_recomendada)}</div></td></tr>`).join("");
+}
+["#fi-tipo","#fi-status"].forEach(s=>$(s).onchange=drawFila); $("#fi-busca").oninput=drawFila;
+
+function renderCausas(R,P){
+  $("#ca-h1").innerHTML=`${num(R.casos_sistemicos)} casos vêm de ${D.causas.length} causas de processo; ${num(R.casos_caso_a_caso)} se resolvem caso a caso`;
+  $("#ca-lede").textContent=`Tratar caso a caso apaga o incêndio de hoje, mas a fila volta amanhã. As causas sistêmicas abaixo geraram ${num(R.excesso_sistemico)} exceções acima do esperado em ${num(R.janela_dias)} dias. Corrigi-las vale cerca de ${brl(R.ganho_mensal_causas)} por mês e ${num(R.tratativas_mes_evitadas)} tratativas a menos.`;
+  $("#ca-kpis").innerHTML=kpi("Casos sistêmicos",num(R.casos_sistemicos),`custo estimado ${brl(R.custo_casos_sistemicos)}`)+
+    kpi("Casos caso a caso",num(R.casos_caso_a_caso),`custo estimado ${brl(R.custo_casos_caso_a_caso)}`)+
+    kpi("Ganho mensal (causas)",brl(R.ganho_mensal_causas),"se o excesso deixar de existir","good")+
+    kpi("Tratativas/mês liberadas",num(R.tratativas_mes_evitadas),`≈ ${num(R.tratativas_mes_evitadas/Math.max(1,P.capacidade_diaria),1)} dias de time`);
+  const maxv=Math.max(...D.causas.map(c=>c.observado),1);
+  $("#ca-list").innerHTML=D.causas.map(c=>{
+    const sem=Object.values(c.semanal||{}), mx=Math.max(...sem,1);
+    return `<div class="cause">
+      <div class="id">${c.id}</div>
+      <div><div class="ttl">${esc(c.rotulo)}</div>
+        <div class="why">${num(c.observado)} casos onde o esperado seria ${espf(c.esperado)} (${liftf(c.lift)} o normal) · dimensão: ${esc(c.dimensao)} · valor dos pedidos ${brl(c.valor_pedidos)}</div>
+        <div class="bar2" title="cinza = esperado; laranja = observado"><b style="width:${c.observado/maxv*100}%"></b><i style="width:${c.esperado/maxv*100}%"></i></div>
+        <ul class="ev">${(c.evidencias||[]).map(e=>`<li>${esc(e)}</li>`).join("")}</ul>
+        <div class="act"><b>Dono:</b> ${esc(c.dono)}<br><b>Ação:</b> ${esc(c.acao)}</div></div>
+      <div class="money"><div class="s">ganho estimado</div><div class="big">${brl(c.ganho_mensal_estimado)}</div><div class="s">por mês · ${num(c.tratativas_mes_evitadas)} tratativas a menos</div>
+        <div class="spark" title="casos por semana">${sem.map(v=>`<i style="height:${Math.max(2,v/mx*34)}px"></i>`).join("")}</div><div class="s">casos por semana</div></div>
+    </div>`}).join("") || '<p class="muted">Nenhuma concentração significativa com os filtros atuais.</p>';
+  $("#ca-proc").innerHTML=D.processo_extra.map(p=>`<div class="card"><div class="kicker">${p.id}</div><div class="ttl" style="font-weight:700;font-size:17px">${esc(p.rotulo)}</div>
+    <ul class="ev" style="font-size:13.5px;color:var(--ink-2)">${p.evidencias.map(e=>`<li>${esc(e)}</li>`).join("")}</ul>
+    <div class="act" style="background:var(--paper-2);border-left:3px solid var(--signal);padding:10px 14px;margin-top:10px;font-size:14px"><b>Dono:</b> ${esc(p.dono)}<br><b>Ação:</b> ${esc(p.acao)}</div>
+    <p class="muted" style="font-size:12.5px">${num(p.tratativas_mes_evitadas)} tratativas/mês liberadas. ${esc(p.obs)}</p></div>`).join("");
+  $("#ca-cac").innerHTML=D.caso_a_caso.map(r=>`<tr><td><b>${esc(r.rotulo)}</b></td><td class="n">${num(r.casos)}</td><td class="n">${brl(r.custo)}</td><td class="n">${brl(r.perda)}</td><td>${esc(r.playbook)}</td></tr>`).join("");
+  $("#ca-transp").innerHTML=D.desempenho_transportadoras.map(r=>`<tr><td><b>${esc(r.transportadora)}</b></td><td class="n">${num(r.entregues)}</td><td class="n">${num(r.atraso_medio_du,1)} DU</td><td class="n">${pct(r.pct_atrasado)}</td><td class="n">${num(r.atraso_medio_sistema,1)} DU</td></tr>`).join("");
+}
+
+const CAMPOS=[
+  ["data_referencia","Data de referência","text","AAAA-MM-DD ou auto"],
+  ["capacidade_diaria","Capacidade diária (tratativas)","number",""],
+  ["minutos_por_tratativa","Minutos por tratativa","number",""],
+  ["cmv_pct","CMV (fração do valor)","number","0,24 = 24%"],
+  ["custo_contato","Custo de um contato (R$)","number",""],
+  ["dias_separacao","Dias úteis de separação","number",""],
+  ["limiar_cliente_alto_valor","Cliente alto valor: receita acima de (R$)","number",""],
+  ["recompra_alto_valor","Recompra 12m: alto valor","number","fração"],
+  ["recompra_demais","Recompra 12m: demais","number","fração"],
+  ["fator_recompra_mal_resolvida","Fator de recompra se mal resolvida","number","0,5 = cai pela metade"],
+  ["horizonte_espera_du","Horizonte de espera (DU)","number","quanto um pedido espera se não for tratado hoje",1],
+  ["contatos_por_du_espera","Contatos do cliente por DU de espera","number","0,2 = 1 contato a cada 5 DU",1],
+  ["rastreio_parado_vira_extravio_du","Rastreio parado vira extravio após (DU de atraso)","number","",1],
+  ["conc_min_casos","Concentração: mínimo de casos","number","",1],
+  ["conc_min_lift","Concentração: lift mínimo","number","observado / esperado",1],
+  ["conc_p_max","Concentração: p-valor máximo","number","teste de Poisson",1],
+];
+function renderParams(P){
+  $("#pf-grid").innerHTML=CAMPOS.map(([k,l,t,h,mine])=>`<div class="field ${mine?'mine':''}"><label>${l}</label><input name="${k}" type="${t}" step="any" value="${esc(P[k])}">${h?`<small>${h}</small>`:""}</div>`).join("");
+  $("#pf-faixas").innerHTML=P.faixas_cancelamento.map((f,i)=>`<div><input data-f="${i}" data-c="0" type="number" value="${f[0]}">a<input data-f="${i}" data-c="1" type="number" value="${f[1]??""}" placeholder="∞">→<input data-f="${i}" data-c="2" type="number" step="any" value="${f[2]}"></div>`).join("");
+  $("#pf-feriados").value=P.feriados.join(", ");
+  $("#src-info").innerHTML=`<div><b>${esc(D.meta.origem)}</b></div><div class="mono muted" style="font-size:12.5px;margin-top:6px">${num(D.meta.linhas_pedidos)} linhas de pedidos · ${num(D.meta.linhas_clientes)} clientes · ${num(D.meta.linhas_transportadoras)} linhas de transportadoras<br>referência usada: ${D.resumo.data_referencia} · calculado em ${D.meta.calculado_em}</div>`;
+}
+function lerParams(){
+  const o={};
+  CAMPOS.forEach(([k,,t])=>{const v=$(`#pf [name=${k}]`).value.trim();o[k]=t==="number"?Number(v.replace(",",".")):v});
+  const fx=[];document.querySelectorAll("#pf-faixas input").forEach(i=>{const f=+i.dataset.f,c=+i.dataset.c;fx[f]=fx[f]||[];const v=i.value.trim();fx[f][c]=v===""?null:Number(v.replace(",","."))});
+  o.faixas_cancelamento=fx; o.feriados=$("#pf-feriados").value;
+  return o;
+}
+$("#pf").onsubmit=async e=>{e.preventDefault();await api("/api/parametros",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lerParams())});toast("Parâmetros aplicados. Tudo foi recalculado.")};
+$("#pf-def").onclick=async()=>{await api("/api/parametros",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(D.meta.defaults)});toast("Parâmetros padrão restaurados.")};
+$("#up-form").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);if(!fd.get("transportadoras")?.size)fd.delete("transportadoras");
+  await api("/api/upload",{method:"POST",body:fd});toast("Dados novos carregados e analisados.")};
+$("#reset-btn").onclick=async()=>{await api("/api/reset",{method:"POST"});toast("Dados e parâmetros originais restaurados.")};
+
+function renderQual(R){
+  const q=D.qualidade, alta=q.filter(x=>x.severidade==="alta"&&x.linhas>0);
+  $("#q-lede").textContent=`${q.length} verificações rodam a cada carga de dados. ${alta.length} problema(s) de alto impacto encontrados; os demais testes de consistência passaram. Campo calculado pelo sistema (data prometida) foi auditado contra a regra do negócio e substituído.`;
+  $("#q-kpis").innerHTML=kpi("Linhas recebidas",num(R.linhas_brutas),"pedidos_excecao.csv")+
+    kpi("Pedidos únicos analisados",num(R.pedidos_em_excecao),`${num(R.duplicatas_removidas)} duplicatas removidas`)+
+    kpi("Data prometida errada",pct(R.prazo_sistema_errado_pct),`sistema em média ${num(R.prazo_sistema_dif_media_du,1)} DU antes do correto`,"risk")+
+    kpi("Atrasos falsos",num(R.atrasos_falsos),`${num(D.prazo.falsos_entregues_no_prazo)} entregues no prazo + ${num(D.prazo.falsos_em_transito_no_prazo)} em trânsito dentro do prazo`,"risk");
+  const ordemSev={alta:0,media:1,info:2};
+  const qs=[...q].sort((a,b)=>((a.linhas>0?ordemSev[a.severidade]:3)-(b.linhas>0?ordemSev[b.severidade]:3)));
+  $("#q-body").innerHTML=qs.map(x=>`<tr><td class="sev-${x.linhas>0?x.severidade:'info'}">${esc(x.verificacao)}</td><td class="n">${num(x.linhas)}</td><td>${esc(x.acao)}</td><td class="muted" style="font-size:13px">${esc(x.detalhe)}</td></tr>`).join("");
+  $("#q-conc").innerHTML=D.concentracoes.map(c=>`<tr><td>${esc(c.dimensao)}</td><td><b>${esc(c.segmento)}</b></td><td>${esc(c.tipo_excecao)}</td><td class="n">${num(c.observado)}</td><td class="n">${num(c.esperado,1)}</td><td class="n">${num(c.excesso,1)}</td><td class="n">${num(c.lift,1)}×</td></tr>`).join("");
+}
+
+api("/api/analise").then(()=>{const h=location.hash.slice(1);const b=h&&document.querySelector(`#nav button[data-t="${h}"]`);if(b)b.click();}).catch(()=>{});
+</script>
+</body>
+</html>
